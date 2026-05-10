@@ -1,0 +1,492 @@
+// Circle Guard — STAGE Pipeline
+// Reutiliza imágenes de DEV (tag: stage), despliega en circle-guard-stage con 2 réplicas.
+// Trigger: MANUAL con aprobación explícita.
+
+pipeline {
+
+    agent any
+
+    options {
+        timeout(time: 45, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timestamps()
+    }
+
+    environment {
+        NS              = 'circle-guard-stage'
+        IMAGE_PREFIX    = 'circle-guard'
+        IMAGE_TAG       = 'stage'
+        KUBECONFIG      = credentials('kubeconfig-stage')     // Jenkins credential
+        NOTIFY_EMAIL    = 'dev-team@circleguard.local'
+        // Port-forward local ports (used by integration + E2E tests)
+        PORT_AUTH       = '8180'
+        PORT_GATEWAY    = '8087'
+        PORT_PROMOTION  = '8088'
+        PORT_FORM       = '8086'
+        PORT_IDENTITY   = '8085'
+        PORT_NOTIF      = '8084'
+    }
+
+    stages {
+
+        // ── 1. CHECKOUT ───────────────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    def branch  = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    def commit  = sh(script: 'git rev-parse --short HEAD',      returnStdout: true).trim()
+                    def author  = sh(script: 'git log -1 --format="%an"',       returnStdout: true).trim()
+                    def message = sh(script: 'git log -1 --format="%s"',        returnStdout: true).trim()
+
+                    if (branch != 'master' && branch != 'HEAD') {
+                        error("STAGE pipeline only runs on master. Current branch: ${branch}")
+                    }
+
+                    echo "Branch : ${branch}"
+                    echo "Commit : ${commit}"
+                    echo "Author : ${author}"
+                    echo "Message: ${message}"
+                    currentBuild.description = "${commit} — ${message}"
+                }
+            }
+        }
+
+        // ── MANUAL APPROVAL ───────────────────────────────────────────────────
+        stage('Approve Deployment') {
+            steps {
+                script {
+                    def approver = input(
+                        message: 'Deploy to STAGE?',
+                        ok: 'Deploy',
+                        parameters: [
+                            string(
+                                name: 'REASON',
+                                defaultValue: '',
+                                description: 'Motivo del deploy (opcional)'
+                            )
+                        ],
+                        submitter: 'dev-leads,admin'
+                    )
+                    echo "Deployment approved. Reason: ${approver ?: 'n/a'}"
+                }
+            }
+        }
+
+        // ── 2. LOAD IMAGES FROM REGISTRY ─────────────────────────────────────
+        stage('Load Images') {
+            steps {
+                script {
+                    def services = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
+                    def missing  = []
+
+                    services.each { svc ->
+                        def image = "${IMAGE_PREFIX}-${svc}-service:${IMAGE_TAG}"
+                        def found = sh(
+                            script: "docker image inspect ${image} > /dev/null 2>&1 && echo OK || echo MISSING",
+                            returnStdout: true
+                        ).trim()
+
+                        if (found == 'OK') {
+                            echo "[OK] ${image}"
+                        } else {
+                            echo "[MISSING] ${image} — retag from :latest"
+                            // Fallback: retag :latest → :stage if available
+                            def latestFound = sh(
+                                script: "docker image inspect ${IMAGE_PREFIX}-${svc}-service:latest > /dev/null 2>&1 && echo OK || echo MISSING",
+                                returnStdout: true
+                            ).trim()
+                            if (latestFound == 'OK') {
+                                sh "docker tag ${IMAGE_PREFIX}-${svc}-service:latest ${image}"
+                                echo "[RETAGGED] latest → ${IMAGE_TAG}"
+                            } else {
+                                missing.add(image)
+                            }
+                        }
+                    }
+
+                    if (missing) {
+                        error("Images not found in local registry — run DEV pipeline first:\n  ${missing.join('\n  ')}")
+                    }
+                }
+            }
+        }
+
+        // ── 3. DEPLOY TO STAGE K8S ────────────────────────────────────────────
+        stage('Deploy to Stage K8s') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    sh """
+                        kubectl get namespace ${NS} > /dev/null 2>&1 || \
+                        kubectl create namespace ${NS}
+                    """
+                    sh "kubectl apply -k kubernetes_manifests/stage/"
+
+                    def deployments = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
+                    deployments.each { svc ->
+                        sh """
+                            kubectl rollout status deployment/${svc}-service \
+                                -n ${NS} --timeout=180s
+                        """
+                    }
+
+                    sh """
+                        kubectl wait pod --all -n ${NS} \
+                            --for=condition=Ready \
+                            --timeout=180s
+                    """
+                    sh "kubectl get deployments -n ${NS}"
+                    sh "kubectl get pods       -n ${NS}"
+                }
+            }
+            post {
+                failure {
+                    sh "kubectl get events -n ${NS} --sort-by=.metadata.creationTimestamp > logs/k8s-stage-events.log 2>&1 || true"
+                    sh "kubectl describe pods  -n ${NS} >> logs/k8s-stage-events.log 2>&1 || true"
+                    echo 'K8s deploy failed — events in logs/k8s-stage-events.log'
+                }
+            }
+        }
+
+        // ── 4. SMOKE TESTS ────────────────────────────────────────────────────
+        stage('Smoke Tests') {
+            options {
+                timeout(time: 4, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    echo 'Waiting 60s for pods to stabilize...'
+                    sleep 60
+
+                    def endpoints = [
+                        [name: 'auth',         svc: 'auth-service',         path: '/actuator/health'],
+                        [name: 'identity',     svc: 'identity-service',     path: '/actuator/health'],
+                        [name: 'promotion',    svc: 'promotion-service',    path: '/actuator/health'],
+                        [name: 'notification', svc: 'notification-service', path: '/actuator/health'],
+                        [name: 'form',         svc: 'form-service',         path: '/actuator/health'],
+                        [name: 'gateway',      svc: 'gateway-service',      path: '/actuator/health'],
+                    ]
+
+                    def failures = []
+                    endpoints.each { ep ->
+                        def url    = "http://${ep.svc}.${NS}.svc.cluster.local:8080${ep.path}"
+                        def status = sh(
+                            script: "curl -sf --max-time 10 -o /dev/null -w '%{http_code}' '${url}'",
+                            returnStdout: true
+                        ).trim()
+                        if (status == '200') {
+                            echo "[OK] ${ep.name} → HTTP ${status}"
+                        } else {
+                            echo "[FAIL] ${ep.name} → HTTP ${status}"
+                            failures.add(ep.name)
+                        }
+                    }
+
+                    if (failures) {
+                        echo "Rolling back failed services: ${failures.join(', ')}"
+                        failures.each { svc ->
+                            sh "kubectl rollout undo deployment/${svc}-service -n ${NS} || true"
+                        }
+                        error("Smoke tests failed — rolled back: ${failures.join(', ')}")
+                    }
+                    echo 'All smoke tests passed!'
+                }
+            }
+        }
+
+        // ── 5. INTEGRATION TESTS CONTRA STAGE ────────────────────────────────
+        stage('Integration Tests') {
+            options {
+                retry(1)
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    sh 'mkdir -p logs'
+                    // Open port-forwards in background; collect PIDs for cleanup
+                    sh """
+                        kubectl port-forward svc/auth-service         ${PORT_AUTH}:8080      -n ${NS} &> logs/pf-auth.log         & echo \$! > /tmp/pf-auth.pid
+                        kubectl port-forward svc/gateway-service      ${PORT_GATEWAY}:8080   -n ${NS} &> logs/pf-gateway.log      & echo \$! > /tmp/pf-gateway.pid
+                        kubectl port-forward svc/promotion-service    ${PORT_PROMOTION}:8080 -n ${NS} &> logs/pf-promotion.log    & echo \$! > /tmp/pf-promotion.pid
+                        kubectl port-forward svc/form-service         ${PORT_FORM}:8080      -n ${NS} &> logs/pf-form.log         & echo \$! > /tmp/pf-form.pid
+                        kubectl port-forward svc/identity-service     ${PORT_IDENTITY}:8080  -n ${NS} &> logs/pf-identity.log     & echo \$! > /tmp/pf-identity.pid
+                        kubectl port-forward svc/notification-service ${PORT_NOTIF}:8080     -n ${NS} &> logs/pf-notif.log        & echo \$! > /tmp/pf-notif.pid
+                        sleep 5
+                    """
+                    sh 'chmod +x tests/integration/run_integration_tests.sh'
+                    sh './tests/integration/run_integration_tests.sh'
+                }
+            }
+            post {
+                always {
+                    // Kill all port-forwards
+                    sh '''
+                        for f in /tmp/pf-*.pid; do
+                            kill "$(cat $f)" 2>/dev/null || true
+                        done
+                    '''
+                    junit(
+                        testResults: 'tests/integration/build/test-results/**/*.xml',
+                        allowEmptyResults: true
+                    )
+                }
+                failure {
+                    echo 'Integration tests failed — NOT rolling back (leaving STAGE for debug)'
+                }
+            }
+        }
+
+        // ── 6. E2E TESTS CONTRA STAGE ─────────────────────────────────────────
+        stage('E2E Tests') {
+            options {
+                retry(1)
+                timeout(time: 15, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    sh """
+                        kubectl port-forward svc/auth-service         ${PORT_AUTH}:8080      -n ${NS} &> logs/pf2-auth.log      & echo \$! > /tmp/pf2-auth.pid
+                        kubectl port-forward svc/gateway-service      ${PORT_GATEWAY}:8080   -n ${NS} &> logs/pf2-gateway.log   & echo \$! > /tmp/pf2-gateway.pid
+                        kubectl port-forward svc/promotion-service    ${PORT_PROMOTION}:8080 -n ${NS} &> logs/pf2-promotion.log & echo \$! > /tmp/pf2-promotion.pid
+                        kubectl port-forward svc/form-service         ${PORT_FORM}:8080      -n ${NS} &> logs/pf2-form.log      & echo \$! > /tmp/pf2-form.pid
+                        kubectl port-forward svc/identity-service     ${PORT_IDENTITY}:8080  -n ${NS} &> logs/pf2-identity.log  & echo \$! > /tmp/pf2-identity.pid
+                        kubectl port-forward svc/notification-service ${PORT_NOTIF}:8080     -n ${NS} &> logs/pf2-notif.log     & echo \$! > /tmp/pf2-notif.pid
+                        sleep 5
+                    """
+                    sh 'chmod +x tests/e2e/run_e2e_tests.sh'
+                    sh './tests/e2e/run_e2e_tests.sh'
+                }
+            }
+            post {
+                always {
+                    sh '''
+                        for f in /tmp/pf2-*.pid; do
+                            kill "$(cat $f)" 2>/dev/null || true
+                        done
+                    '''
+                    junit(
+                        testResults: 'tests/e2e/build/test-results/**/*.xml',
+                        allowEmptyResults: true
+                    )
+                    publishHTML(target: [
+                        allowMissing         : true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll              : true,
+                        reportDir            : 'tests/e2e/build/reports/tests/test',
+                        reportFiles          : 'index.html',
+                        reportName           : 'E2E Test Report (Stage)'
+                    ])
+                }
+                failure {
+                    echo 'E2E tests failed — NOT rolling back (leaving STAGE for debug)'
+                }
+            }
+        }
+
+        // ── 7. PERFORMANCE BASELINE ───────────────────────────────────────────
+        stage('Performance Baseline') {
+            options {
+                timeout(time: 3, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    sh 'mkdir -p tests/performance/reports'
+                    // Port-forward auth for locust (host param)
+                    sh """
+                        kubectl port-forward svc/auth-service ${PORT_AUTH}:8080 -n ${NS} &> logs/pf3-auth.log & echo \$! > /tmp/pf3-auth.pid
+                        kubectl port-forward svc/gateway-service ${PORT_GATEWAY}:8080 -n ${NS} &> logs/pf3-gateway.log & echo \$! > /tmp/pf3-gateway.pid
+                        kubectl port-forward svc/promotion-service ${PORT_PROMOTION}:8080 -n ${NS} &> logs/pf3-promotion.log & echo \$! > /tmp/pf3-promotion.pid
+                        kubectl port-forward svc/form-service ${PORT_FORM}:8080 -n ${NS} &> logs/pf3-form.log & echo \$! > /tmp/pf3-form.pid
+                        sleep 5
+                    """
+                    sh """
+                        cd tests/performance && \
+                        locust -f locustfile.py \
+                            --host http://localhost:${PORT_AUTH} \
+                            -u 10 -r 1 -t 30s \
+                            --headless \
+                            --csv=reports/stage-baseline \
+                            --csv-full-history \
+                            2>&1 | tail -5 || true
+                    """
+                    sh '''
+                        for f in /tmp/pf3-*.pid; do
+                            kill "$(cat $f)" 2>/dev/null || true
+                        done
+                    '''
+                    // Parse p95 and error rate — warn only, never fail pipeline
+                    script {
+                        def csv = 'tests/performance/reports/stage-baseline_stats.csv'
+                        def exists = fileExists(csv)
+                        if (exists) {
+                            def content = readFile(csv)
+                            def lines   = content.split('\n')
+                            def aggLine = lines.find { it.contains('Aggregated') } ?: ''
+                            def cols    = aggLine.split(',')
+                            // CSV columns: Type,Name,Requests,Failures,Median,Average,Min,Max,Average size,RPS,Failures/s,50%,66%,75%,80%,90%,95%,98%,99%,99.9%,99.99%,100%
+                            if (cols.size() > 16) {
+                                def p95      = cols[16].toDouble()
+                                def requests = cols[2].toInteger()
+                                def failures = cols[3].toInteger()
+                                def errRate  = requests > 0 ? (failures / requests * 100) : 0
+                                echo "Performance Baseline Results:"
+                                echo "  p95 response time : ${p95}ms  (target: <300ms)"
+                                echo "  Error rate        : ${String.format('%.1f', errRate)}%  (target: 0%)"
+                                if (p95 > 300 || errRate > 0) {
+                                    unstable("Performance warning: p95=${p95}ms err=${String.format('%.1f', errRate)}% — check reports/stage-baseline_stats.csv")
+                                } else {
+                                    echo 'Performance baseline PASSED'
+                                }
+                            }
+                        } else {
+                            echo 'WARNING: performance CSV not found — locust may not be installed on agent'
+                            currentBuild.result = 'UNSTABLE'
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'tests/performance/reports/stage-baseline*',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
+
+        // ── 8. SECURITY SCAN ──────────────────────────────────────────────────
+        stage('Security Scan') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+            steps {
+                script {
+                    def services   = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
+                    def criticals  = []
+                    def warnings   = []
+                    sh 'mkdir -p logs/security'
+
+                    services.each { svc ->
+                        def image = "${IMAGE_PREFIX}-${svc}-service:${IMAGE_TAG}"
+                        def log   = "logs/security/${svc}-scan.log"
+
+                        // Try docker scout first, fall back to trivy, then skip gracefully
+                        def scanResult = sh(
+                            script: """
+                                if command -v docker > /dev/null && docker scout version > /dev/null 2>&1; then
+                                    docker scout cves ${image} --exit-code 2>&1 | tee ${log}
+                                elif command -v trivy > /dev/null 2>&1; then
+                                    trivy image --severity CRITICAL,HIGH --no-progress ${image} 2>&1 | tee ${log}
+                                else
+                                    echo 'NO_SCANNER' | tee ${log}
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        if (scanResult.contains('NO_SCANNER')) {
+                            echo "[SKIP] ${svc} — no scanner available (install docker scout or trivy)"
+                            warnings.add("${svc}: no scanner")
+                        } else if (scanResult =~ /(?i)critical/) {
+                            echo "[CRITICAL] ${svc} has CRITICAL vulnerabilities"
+                            criticals.add(svc)
+                        } else if (scanResult =~ /(?i)(high|medium)/) {
+                            echo "[WARN] ${svc} has HIGH/MEDIUM vulnerabilities — check logs/security/${svc}-scan.log"
+                            warnings.add(svc)
+                        } else {
+                            echo "[OK] ${svc} — no critical vulnerabilities"
+                        }
+                    }
+
+                    if (warnings) {
+                        unstable("Security warnings for: ${warnings.join(', ')} — check security scan logs")
+                    }
+                    if (criticals) {
+                        error("CRITICAL vulnerabilities found in: ${criticals.join(', ')} — see logs/security/")
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'logs/security/*.log',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
+    }
+
+    // ── POST ──────────────────────────────────────────────────────────────────
+    post {
+
+        always {
+            // Kill any lingering port-forwards
+            sh '''
+                for f in /tmp/pf*.pid; do
+                    [ -f "$f" ] && kill "$(cat $f)" 2>/dev/null || true
+                done
+                rm -f /tmp/pf*.pid
+            '''
+            archiveArtifacts(
+                artifacts: 'logs/**,tests/performance/reports/**,tests/e2e/build/reports/**,tests/integration/build/reports/**',
+                allowEmptyArchive: true,
+                fingerprint: false
+            )
+        }
+
+        failure {
+            // Full rollback on pipeline failure
+            sh '''
+                for svc in auth identity promotion notification form gateway; do
+                    kubectl rollout undo deployment/${svc}-service -n circle-guard-stage 2>/dev/null || true
+                done
+            '''
+            emailext(
+                to: "${NOTIFY_EMAIL}",
+                subject: "FAILURE: Circle Guard STAGE — Build #${BUILD_NUMBER}",
+                body: """
+                    Pipeline FAILED en stage: ${currentBuild.currentResult}
+                    Commit  : ${currentBuild.description ?: 'n/a'}
+                    Duration: ${currentBuild.durationString}
+                    Consola : ${BUILD_URL}console
+                    Logs    : ${BUILD_URL}artifact/logs/
+                """.stripIndent()
+            )
+        }
+
+        unstable {
+            emailext(
+                to: "${NOTIFY_EMAIL}",
+                subject: "UNSTABLE: Circle Guard STAGE — Build #${BUILD_NUMBER} (warnings)",
+                body: """
+                    Pipeline completado con WARNINGS (performance o security).
+                    Commit  : ${currentBuild.description ?: 'n/a'}
+                    Duration: ${currentBuild.durationString}
+                    E2E     : ${BUILD_URL}E2E_20Test_20Report_20_28Stage_29/
+                    Perf    : ${BUILD_URL}artifact/tests/performance/reports/
+                    Security: ${BUILD_URL}artifact/logs/security/
+                """.stripIndent()
+            )
+        }
+
+        success {
+            emailext(
+                to: "${NOTIFY_EMAIL}",
+                subject: "SUCCESS: Circle Guard STAGE — Build #${BUILD_NUMBER}",
+                body: """
+                    STAGE deployment exitoso. Todos los tests pasaron.
+                    Commit  : ${currentBuild.description ?: 'n/a'}
+                    Duration: ${currentBuild.durationString}
+                    E2E     : ${BUILD_URL}E2E_20Test_20Report_20_28Stage_29/
+                    Perf    : ${BUILD_URL}artifact/tests/performance/reports/
+                """.stripIndent()
+            )
+        }
+    }
+}
