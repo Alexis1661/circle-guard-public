@@ -76,7 +76,7 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 sh 'mkdir -p logs'
-                sh "docker-compose -f ${COMPOSE_FILE} up -d"
+                sh "docker-compose -f ${COMPOSE_FILE} up -d --build"
                 sh 'sleep 30'
                 // Initialize databases manually due to DinD volume limitations
                 sh 'docker cp init-db.sql circleguard-postgres-test:/tmp/init-db.sql'
