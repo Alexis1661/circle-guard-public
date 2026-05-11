@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: circle-guard-dev
+  labels:
+    app: circle-guard-auth
+    project: circle-guard
+spec:
+  type: ClusterIP
+  selector:
+    app: circle-guard-auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8180

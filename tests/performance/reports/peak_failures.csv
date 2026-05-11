@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,POST /surveys,CatchResponseError('Submit survey: 0'),6
+GET,GET /questionnaires,CatchResponseError('List questionnaires: 0'),3

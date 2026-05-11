@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: circle-guard-dev
+  labels:
+    app: circle-guard-gateway
+    project: circle-guard
+spec:
+  type: ClusterIP
+  selector:
+    app: circle-guard-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8087

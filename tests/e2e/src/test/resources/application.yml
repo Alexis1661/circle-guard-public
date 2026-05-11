@@ -1,0 +1,93 @@
+# Base config for ALL E2E tests.
+# Overrides all service-level application.yml files (test resources come first in classpath).
+# Each E2E flow class re-enables / overrides what it specifically needs.
+
+spring:
+  # ── Default: H2 in-memory (no PostgreSQL needed unless test explicitly enables it)
+  datasource:
+    url: jdbc:h2:mem:e2etest;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  flyway:
+    enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+
+  # ── Embedded LDAP for auth service tests
+  ldap:
+    embedded:
+      base-dn: dc=circleguard,dc=edu
+      port: 3895
+      ldif: classpath:test.ldif
+    urls: ldap://localhost:3895
+    base: dc=circleguard,dc=edu
+    username: cn=admin,dc=circleguard,dc=edu
+    password: admin
+
+  # ── Mail: fake SMTP
+  mail:
+    host: localhost
+    port: 2525
+    username: e2etest@circleguard.edu
+    password: test
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+  # ── Redis: lazy (gateway tests override with container URL)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # ── Neo4j: lazy (promotion tests override with container URL)
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: password
+
+  # ── Kafka: overridden by @EmbeddedKafka in Kafka tests
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+
+# ── Shared secrets (same across all services)
+jwt:
+  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+  expiration: 3600000
+
+qr:
+  secret: "my-qr-secret-key-for-dev-1234567890"
+  expiration: 300
+
+# ── Identity service vault (all three properties required by IdentityEncryptionConverter)
+vault:
+  secret: 746573742d7365637265742d33322d63686172732d6c6f6e672d313233343536
+  salt: deadbeef
+  hash-salt: "12345678"
+
+# ── Notification service external deps (fake)
+twilio:
+  account-sid: ACtest00000000000000000000000000000
+  auth-token: test_token_00000000000000000000000
+  from-number: "+15550000000"
+
+auth:
+  api:
+    url: http://localhost:18180
+
+management:
+  health:
+    mail:
+      enabled: false

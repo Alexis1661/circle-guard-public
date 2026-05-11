@@ -55,6 +55,9 @@ pipeline {
                         builds["Build ${s}"] = {
                             def d = "circleguard-${s}-service"
                             def img = "${IMAGE_PREFIX}-${s}-service"
+                            // Elimina *-plain.jar para que el glob *.jar del Dockerfile
+                            // matchee exactamente el fat-jar de Spring Boot
+                            sh "find services/${d}/build/libs -name '*-plain.jar' -delete 2>/dev/null || true"
                             sh """
                                 docker build \
                                     --cache-from ${img}:latest \
@@ -106,9 +109,15 @@ pipeline {
         stage('Deploy to Dev K8s') {
             steps {
                 script {
-                    sh "kubectl apply -k kubernetes_manifests/dev/"
-                    // Espera simplificada
-                    sh "kubectl rollout status deployment/gateway-service -n ${NS} --timeout=120s"
+                    try {
+                        sh "kubectl apply -k kubernetes_manifests/dev/"
+                        sh "kubectl rollout status deployment/gateway-service -n ${NS} --timeout=120s"
+                        echo 'K8s deploy successful'
+                    } catch (e) {
+                        echo "WARNING: K8s deploy skipped — ${e.getMessage()}"
+                        echo 'Tip: el kubeconfig-dev debe tener certificados embebidos (no rutas locales de Windows)'
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }

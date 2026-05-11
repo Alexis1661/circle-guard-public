@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: circle-guard-dev
+  labels:
+    environment: dev
+    project: circle-guard

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: promotion-service
+  namespace: circle-guard-dev
+  labels:
+    app: circle-guard-promotion
+    project: circle-guard
+spec:
+  type: ClusterIP
+  selector:
+    app: circle-guard-promotion
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8088

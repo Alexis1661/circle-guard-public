@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: circle-guard-notification
+  namespace: circle-guard-dev
+  labels:
+    app: circle-guard-notification
+    project: circle-guard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: circle-guard-notification
+  template:
+    metadata:
+      labels:
+        app: circle-guard-notification
+        version: latest
+    spec:
+      containers:
+        - name: notification-service
+          image: circle-guard-notification-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: circle-guard-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              valueFrom:
+                configMapKeyRef:
+                  name: circle-guard-config
+                  key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+            - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+              valueFrom:
+                configMapKeyRef:
+                  name: circle-guard-config
+                  key: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+            # Kafka
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: circle-guard-config
+                  key: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            # Inter-service
+            - name: AUTH_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: circle-guard-config
+                  key: AUTH_API_URL
+            # JWT
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: circle-guard-secrets
+                  key: JWT_SECRET
+            - name: QR_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: circle-guard-secrets
+                  key: QR_SECRET
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

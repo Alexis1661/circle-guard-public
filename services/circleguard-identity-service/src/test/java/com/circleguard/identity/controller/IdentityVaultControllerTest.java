@@ -19,6 +19,8 @@ import com.circleguard.identity.config.SecurityConfig;
 
 @WebMvcTest(IdentityVaultController.class)
 @Import(SecurityConfig.class)
+@org.springframework.test.context.TestPropertySource(
+    properties = {"jwt.secret=my-super-secret-test-key-must-be-at-least-32-bytes-long"})
 class IdentityVaultControllerTest {
 
     @Autowired

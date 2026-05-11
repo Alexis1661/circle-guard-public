@@ -1,0 +1,8 @@
+Method,Name,Error,Occurrences
+POST,POST /surveys,CatchResponseError('Submit survey: 0'),393
+POST,POST /gate/validate,CatchResponseError('QR validate: 0'),200
+POST,POST /auth/login,CatchResponseError('Login failed: 0'),48
+GET,GET /buildings,CatchResponseError('List buildings: 0'),167
+GET,GET /auth/qr/generate,CatchResponseError('QR generate: 0'),63
+GET,GET /questionnaires,CatchResponseError('List questionnaires: 0'),151
+POST,POST /buildings,CatchResponseError('Create building: 0'),84

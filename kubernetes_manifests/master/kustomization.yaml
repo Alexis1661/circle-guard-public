@@ -1,0 +1,99 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production overlay — inherits dev resources, applies 3-replica HA + TLS ingress.
+# Apply with: kubectl apply -k kubernetes_manifests/master/
+# Prerequisites:
+#   - nginx-ingress controller installed
+#   - TLS secrets created (cert-manager or manual: kubectl create secret tls circle-guard-{svc}-tls ...)
+
+namespace: circle-guard-master
+
+resources:
+  # Own namespace
+  - namespace.yaml
+
+  # Full resource set inherited from dev
+  - ../dev/configmap.yaml
+  - ../dev/secrets.yaml
+  - ../dev/postgres-initdb-configmap.yaml
+  - ../dev/postgres-statefulset.yaml
+  - ../dev/postgres-service.yaml
+  - ../dev/redis-statefulset.yaml
+  - ../dev/redis-service.yaml
+  - ../dev/neo4j-statefulset.yaml
+  - ../dev/neo4j-service.yaml
+  - ../dev/zookeeper-statefulset.yaml
+  - ../dev/zookeeper-service.yaml
+  - ../dev/kafka-statefulset.yaml
+  - ../dev/kafka-service.yaml
+  - ../dev/openldap-statefulset.yaml
+  - ../dev/openldap-service.yaml
+  - ../dev/auth-deployment.yaml
+  - ../dev/auth-service.yaml
+  - ../dev/identity-deployment.yaml
+  - ../dev/identity-service.yaml
+  - ../dev/promotion-deployment.yaml
+  - ../dev/promotion-service.yaml
+  - ../dev/notification-deployment.yaml
+  - ../dev/notification-service.yaml
+  - ../dev/form-deployment.yaml
+  - ../dev/form-service.yaml
+  - ../dev/gateway-deployment.yaml
+  - ../dev/gateway-service.yaml
+
+  # TLS ingresses (HTTPS)
+  - auth-ingress.yaml
+  - identity-ingress.yaml
+  - promotion-ingress.yaml
+  - form-ingress.yaml
+  - gateway-ingress.yaml
+
+# Replace ConfigMap with master-specific values (SPRING_PROFILES_ACTIVE=master)
+patches:
+  - path: configmap-patch.yaml
+    target:
+      kind: ConfigMap
+      name: circle-guard-config
+
+  # Scale all app Deployments to 3 replicas for HA
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      labelSelector: "project=circle-guard"
+
+  # Increase resource limits for production load
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "1Gi"
+    target:
+      kind: Deployment
+      labelSelector: "project=circle-guard"
+
+# Override image tags for master (production) builds
+images:
+  - name: circle-guard-auth-service
+    newTag: master
+  - name: circle-guard-identity-service
+    newTag: master
+  - name: circle-guard-promotion-service
+    newTag: master
+  - name: circle-guard-notification-service
+    newTag: master
+  - name: circle-guard-form-service
+    newTag: master
+  - name: circle-guard-gateway-service
+    newTag: master

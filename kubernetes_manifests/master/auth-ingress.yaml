@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auth-ingress
+  namespace: circle-guard-master
+  labels:
+    app: circle-guard-auth
+    project: circle-guard
+    environment: master
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"   # uncomment when cert-manager is installed
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - circle-guard-auth.circleguard.edu
+      secretName: circle-guard-auth-tls    # created by cert-manager or manually
+  rules:
+    - host: circle-guard-auth.circleguard.edu
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 8080

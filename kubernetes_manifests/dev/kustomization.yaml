@@ -1,0 +1,66 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: circle-guard-dev
+
+resources:
+  # Namespace
+  - namespace.yaml
+
+  # Config & Secrets
+  - configmap.yaml
+  - secrets.yaml
+  - postgres-initdb-configmap.yaml
+
+  # Infrastructure StatefulSets + Services
+  - postgres-statefulset.yaml
+  - postgres-service.yaml
+  - redis-statefulset.yaml
+  - redis-service.yaml
+  - neo4j-statefulset.yaml
+  - neo4j-service.yaml
+  - zookeeper-statefulset.yaml
+  - zookeeper-service.yaml
+  - kafka-statefulset.yaml
+  - kafka-service.yaml
+  - openldap-statefulset.yaml
+  - openldap-service.yaml
+
+  # Application Deployments + Services
+  - auth-deployment.yaml
+  - auth-service.yaml
+  - identity-deployment.yaml
+  - identity-service.yaml
+  - promotion-deployment.yaml
+  - promotion-service.yaml
+  - notification-deployment.yaml
+  - notification-service.yaml
+  - form-deployment.yaml
+  - form-service.yaml
+  - gateway-deployment.yaml
+  - gateway-service.yaml
+
+# Replica patch for dev (1 replica per service)
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      labelSelector: "project=circle-guard"
+
+# Image tags — Jenkins pipeline will override these with the build number
+images:
+  - name: circle-guard-auth-service
+    newTag: latest
+  - name: circle-guard-identity-service
+    newTag: latest
+  - name: circle-guard-promotion-service
+    newTag: latest
+  - name: circle-guard-notification-service
+    newTag: latest
+  - name: circle-guard-form-service
+    newTag: latest
+  - name: circle-guard-gateway-service
+    newTag: latest

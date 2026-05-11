@@ -1,0 +1,20 @@
+dn: dc=circleguard,dc=edu
+objectClass: top
+objectClass: domain
+dc: circleguard
+
+dn: ou=People,dc=circleguard,dc=edu
+objectClass: top
+objectClass: organizationalUnit
+ou: People
+
+dn: uid=ldapuser,ou=People,dc=circleguard,dc=edu
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: inetOrgPerson
+cn: LDAP Test User
+sn: User
+uid: ldapuser
+mail: ldapuser@circleguard.edu
+userPassword: ldappass

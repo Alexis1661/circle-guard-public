@@ -1,0 +1,80 @@
+# Base config for ALL integration tests.
+# Loaded FIRST in test classpath — overrides service-level application.yml files.
+# Each test class re-enables only what it actually needs.
+
+spring:
+  # ── Default: H2 in-memory (prevents PostgreSQL auth failures in non-DB tests)
+  datasource:
+    url: jdbc:h2:mem:integrationtest;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  flyway:
+    enabled: false   # DB tests re-enable this
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+
+  # ── Embedded LDAP (auth service tests use this instead of real OpenLDAP)
+  ldap:
+    embedded:
+      base-dn: dc=circleguard,dc=edu
+      port: 3892
+      ldif: classpath:test.ldif
+    urls: ldap://localhost:3892   # overrides auth service's external LDAP URL
+    base: dc=circleguard,dc=edu
+    username: cn=admin,dc=circleguard,dc=edu
+    password: admin
+
+  # ── Mail: fake SMTP (no real sending)
+  mail:
+    host: localhost
+    port: 2525
+    username: test@test.com
+    password: test
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+  # ── Redis: lazy connection (gateway tests override with container URL)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # ── Kafka: overridden by @EmbeddedKafka in Kafka tests
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+
+# ── JWT / QR secrets — EXACT property keys used by the services (no "app." prefix)
+jwt:
+  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+  expiration: 3600000
+
+qr:
+  secret: "my-qr-secret-key-for-dev-1234567890"
+  expiration: 300
+
+# ── Identity service vault secret
+vault:
+  secret: 746573742d7365637265742d33322d63686172732d6c6f6e672d313233343536
+
+# ── Twilio (fake — notification service beans are @MockBean'd in tests)
+twilio:
+  account-sid: ACtest00000000000000000000000000000
+  auth-token: test_token_00000000000000000000000
+  from-number: "+15550000000"
+
+# ── Auth API URL (used by notification service's PriorityAlertListener)
+auth:
+  api:
+    url: http://localhost:18180

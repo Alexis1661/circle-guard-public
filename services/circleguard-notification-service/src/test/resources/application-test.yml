@@ -1,0 +1,9 @@
+spring:
+  mail:
+    host: localhost
+    port: 25
+
+management:
+  health:
+    mail:
+      enabled: false

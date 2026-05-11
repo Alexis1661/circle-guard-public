@@ -1,0 +1,4 @@
+# Strategic-merge patch: sets replicas to 2 for all app Deployments in stage
+- op: replace
+  path: /spec/replicas
+  value: 2

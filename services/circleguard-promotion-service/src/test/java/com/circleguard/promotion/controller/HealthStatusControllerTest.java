@@ -17,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(HealthStatusController.class)
 @Import(SecurityConfig.class)
+@org.springframework.test.context.TestPropertySource(
+    properties = {"jwt.secret=my-super-secret-test-key-must-be-at-least-32-bytes-long"})
 class HealthStatusControllerTest {
 
     @Autowired
@@ -26,7 +28,9 @@ class HealthStatusControllerTest {
     private HealthStatusService statusService;
 
     @Test
-    @WithMockUser(authorities = "HEALTH_CENTER")
+    // roles = "HEALTH_CENTER" adds ROLE_HEALTH_CENTER authority,
+    // which satisfies @PreAuthorize("hasRole('HEALTH_CENTER')")
+    @WithMockUser(roles = "HEALTH_CENTER")
     void confirmPositive_WithPermission_CallsUpdateStatus() throws Exception {
         String json = "{\"anonymousId\": \"user-1\"}";
 
@@ -39,7 +43,7 @@ class HealthStatusControllerTest {
     }
 
     @Test
-    @WithMockUser(authorities = "HEALTH_CENTER")
+    @WithMockUser(roles = "HEALTH_CENTER")
     void resolve_WithPermission_CallsResolveStatus() throws Exception {
         String json = "{\"anonymousId\": \"user-1\"}";
 

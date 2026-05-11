@@ -1,0 +1,6 @@
+COMPLETADO — Reportes en reports/
+baseline_stats.csv  normal_stats.csv  peak_stats.csv  stress_stats.csv
+EXIT_CODE=0
+ELAPSED_SECS=390
+SUITE_NAME=Performance Tests
+TIMESTAMP_END=2026-05-10T16:14:42Z

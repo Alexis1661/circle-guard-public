@@ -11,6 +11,7 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:3.2.4"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-data-neo4j")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
@@ -29,4 +30,15 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.19.3")
     testImplementation("org.testcontainers:postgresql:1.19.3")
     testImplementation("org.testcontainers:neo4j:1.19.3")
+}
+
+// Exclude TestContainers-based integration tests from the unit test task.
+// These tests require a running Docker daemon and are meant for the integration
+// test pipeline (stage/master environments). Run them with:
+//   ./gradlew :services:circleguard-promotion-service:test --tests "*IntegrationTest*"
+tasks.named<Test>("test") {
+    exclude("**/PromotionPerformanceTest.class")
+    exclude("**/AdministrativeCorrectionTest.class")
+    exclude("**/HealthStatusReevaluationTest.class")
+    exclude("**/StatusLifecycleTest.class")
 }

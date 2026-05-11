@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: circle-guard-config
+  namespace: circle-guard-dev
+  labels:
+    project: circle-guard
+    environment: dev
+data:
+  SPRING_PROFILES_ACTIVE: "dev"
+
+  # Kafka
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  PROMOTION_KAFKA_CONSUMER_GROUP: "promotion-service-group"
+  NOTIFICATION_KAFKA_CONSUMER_GROUP: "notification-group"
+
+  # Redis
+  SPRING_DATA_REDIS_HOST: "redis"
+  SPRING_DATA_REDIS_PORT: "6379"
+
+  # Neo4j
+  SPRING_NEO4J_URI: "bolt://neo4j:7687"
+  SPRING_NEO4J_AUTHENTICATION_USERNAME: "neo4j"
+
+  # LDAP
+  SPRING_LDAP_URLS: "ldap://openldap:389"
+  SPRING_LDAP_BASE: "dc=circleguard,dc=edu"
+  SPRING_LDAP_USERNAME: "cn=admin,dc=circleguard,dc=edu"
+
+  # Inter-service URLs (port 8080 is ClusterIP internal port for all services)
+  AUTH_API_URL: "http://auth-service:8080"
+
+  # Actuator (required for liveness/readiness probes)
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"

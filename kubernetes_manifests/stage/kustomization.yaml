@@ -1,0 +1,80 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# This overlay inherits ALL resources from dev/ and patches for stage.
+# Apply with: kubectl apply -k kubernetes_manifests/stage/
+
+namespace: circle-guard-stage
+
+resources:
+  # Own namespace (must be listed explicitly — kustomize namespace field
+  # only patches metadata.namespace, not a Namespace resource's metadata.name)
+  - namespace.yaml
+
+  # Full resource set inherited from dev
+  - ../dev/configmap.yaml          # will be replaced by configmap-patch below
+  - ../dev/secrets.yaml
+  - ../dev/postgres-initdb-configmap.yaml
+  - ../dev/postgres-statefulset.yaml
+  - ../dev/postgres-service.yaml
+  - ../dev/redis-statefulset.yaml
+  - ../dev/redis-service.yaml
+  - ../dev/neo4j-statefulset.yaml
+  - ../dev/neo4j-service.yaml
+  - ../dev/zookeeper-statefulset.yaml
+  - ../dev/zookeeper-service.yaml
+  - ../dev/kafka-statefulset.yaml
+  - ../dev/kafka-service.yaml
+  - ../dev/openldap-statefulset.yaml
+  - ../dev/openldap-service.yaml
+  - ../dev/auth-deployment.yaml
+  - ../dev/auth-service.yaml
+  - ../dev/identity-deployment.yaml
+  - ../dev/identity-service.yaml
+  - ../dev/promotion-deployment.yaml
+  - ../dev/promotion-service.yaml
+  - ../dev/notification-deployment.yaml
+  - ../dev/notification-service.yaml
+  - ../dev/form-deployment.yaml
+  - ../dev/form-service.yaml
+  - ../dev/gateway-deployment.yaml
+  - ../dev/gateway-service.yaml
+
+  # Stage-only: ingress for each HTTP-facing service
+  # (notification-service is excluded — purely event-driven, no HTTP ingress needed)
+  - auth-ingress.yaml
+  - identity-ingress.yaml
+  - promotion-ingress.yaml
+  - form-ingress.yaml
+  - gateway-ingress.yaml
+
+# Replace ConfigMap with stage-specific values (SPRING_PROFILES_ACTIVE=stage)
+patches:
+  - path: configmap-patch.yaml
+    target:
+      kind: ConfigMap
+      name: circle-guard-config
+
+  # Scale all app Deployments to 2 replicas
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      labelSelector: "project=circle-guard"
+
+# Override image tags for stage builds
+images:
+  - name: circle-guard-auth-service
+    newTag: stage
+  - name: circle-guard-identity-service
+    newTag: stage
+  - name: circle-guard-promotion-service
+    newTag: stage
+  - name: circle-guard-notification-service
+    newTag: stage
+  - name: circle-guard-form-service
+    newTag: stage
+  - name: circle-guard-gateway-service
+    newTag: stage
