@@ -44,6 +44,8 @@ pipeline {
         }
 
         // ── 3. BUILD IMAGES ──────────────────────────────────────────────────────
+        // Usa --cache-from :latest para reutilizar capas previas — builds subsecuentes
+        // son instantáneos si el JAR no cambió (COPY app.jar es la única capa que varía).
         stage('Build Images') {
             steps {
                 script {
@@ -52,7 +54,15 @@ pipeline {
                     services.each { s ->
                         builds["Build ${s}"] = {
                             def d = "circleguard-${s}-service"
-                            sh "docker build -f services/${d}/Dockerfile -t ${IMAGE_PREFIX}-${s}-service:latest -t ${IMAGE_PREFIX}-${s}-service:${BUILD_TAG} ."
+                            def img = "${IMAGE_PREFIX}-${s}-service"
+                            sh """
+                                docker build \
+                                    --cache-from ${img}:latest \
+                                    -f services/${d}/Dockerfile \
+                                    -t ${img}:latest \
+                                    -t ${img}:${BUILD_TAG} \
+                                    .
+                            """
                         }
                     }
                     parallel builds
