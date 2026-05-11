@@ -1,0 +1,326 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Circle Guard — Test Environment
+# All services run inside a shared bridge network (circleguard-test).
+# Infrastructure uses dedicated -test container names and offset ports to
+# avoid conflicts with a running dev stack.
+# Spring Boot services override config via Spring's relaxed-binding env vars.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres-test:
+    image: postgres:16
+    container_name: circleguard-postgres-test
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: circleguard
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d circleguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - circleguard-test
+
+  neo4j-test:
+    image: neo4j:5.26
+    container_name: circleguard-neo4j-test
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_connector_bolt_listen__address: :7687
+      NEO4J_dbms_connector_bolt_advertised__address: :7687
+    volumes:
+      - neo4jdata_test:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - circleguard-test
+
+  zookeeper-test:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: circleguard-zookeeper-test
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep -q imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - circleguard-test
+
+  kafka-test:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: circleguard-kafka-test
+    depends_on:
+      zookeeper-test:
+        condition: service_healthy
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-test:2181
+      # Two listeners: PLAINTEXT for inter-container traffic, PLAINTEXT_HOST for host access
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-test:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9093 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - circleguard-test
+
+  redis-test:
+    image: redis:7.2
+    container_name: circleguard-redis-test
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - circleguard-test
+
+  openldap-test:
+    image: osixia/openldap:1.5.0
+    container_name: circleguard-ldap-test
+    ports:
+      - "390:389"
+      - "637:636"
+    environment:
+      LDAP_ORGANISATION: "CircleGuard"
+      LDAP_DOMAIN: "circleguard.edu"
+      LDAP_ADMIN_PASSWORD: "admin"
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b '' -s base '(objectclass=*)' namingContexts 2>&1 | grep -q 'result: 0'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - circleguard-test
+
+  # ── Microservices ────────────────────────────────────────────────────────────
+  # Built from project root. Override Spring config via env vars (relaxed binding).
+  # Actuator must be on classpath: implementation("org.springframework.boot:spring-boot-starter-actuator")
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-auth-service/Dockerfile
+    container_name: circleguard-auth-test
+    ports:
+      - "8180:8180"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/circleguard_auth
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_LDAP_URLS: ldap://openldap-test:389
+      SPRING_LDAP_BASE: dc=circleguard,dc=edu
+      SPRING_LDAP_USERNAME: cn=admin,dc=circleguard,dc=edu
+      SPRING_LDAP_PASSWORD: admin
+      JWT_SECRET: my-super-secret-dev-key-32-chars-long-12345678
+      QR_SECRET: my-qr-secret-key-for-dev-1234567890
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      openldap-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8180/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - circleguard-test
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-identity-service/Dockerfile
+    container_name: circleguard-identity-test
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/circleguard_identity
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      JWT_SECRET: my-super-secret-dev-key-32-chars-long-12345678
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - circleguard-test
+
+  promotion-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-promotion-service/Dockerfile
+    container_name: circleguard-promotion-test
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/circleguard_promotion
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_NEO4J_URI: bolt://neo4j-test:7687
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-test:9092
+      SPRING_DATA_REDIS_HOST: redis-test
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: my-super-secret-dev-key-32-chars-long-12345678
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      neo4j-test:
+        condition: service_healthy
+      kafka-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8088/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - circleguard-test
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-notification-service/Dockerfile
+    container_name: circleguard-notification-test
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-test:9092
+      AUTH_API_URL: http://auth-service:8180
+      JWT_SECRET: my-super-secret-dev-key-32-chars-long-12345678
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      kafka-test:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - circleguard-test
+
+  form-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-form-service/Dockerfile
+    container_name: circleguard-form-test
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-test:5432/circleguard_form
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka-test:9092
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      kafka-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8086/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - circleguard-test
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: services/circleguard-gateway-service/Dockerfile
+    container_name: circleguard-gateway-test
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SPRING_DATA_REDIS_HOST: redis-test
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: my-super-secret-dev-key-32-chars-long-12345678
+      QR_SECRET: my-qr-secret-key-for-dev-1234567890
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+    depends_on:
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8087/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - circleguard-test
+
+networks:
+  circleguard-test:
+    driver: bridge
+
+volumes:
+  pgdata_test:
+  neo4jdata_test:
