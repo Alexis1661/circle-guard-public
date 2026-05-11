@@ -62,6 +62,7 @@ pipeline {
                                     -f services/${d}/Dockerfile \
                                     -t ${IMAGE_PREFIX}-${s}-service:latest \
                                     -t ${IMAGE_PREFIX}-${s}-service:${BUILD_TAG} \
+                                    --network host \
                                     .
                             """
                         }
