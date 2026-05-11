@@ -5,9 +5,9 @@ pluginManagement {
     }
 }
 
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
-}
+// plugins {
+//     id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
+// }
 
 rootProject.name = "circleguard"
 
@@ -15,6 +15,12 @@ rootProject.name = "circleguard"
 // include("libs:circleguard-common")
 // include("libs:circleguard-security")
 // include("libs:circleguard-events")
+
+// Integration Tests
+include("tests:integration")
+
+// E2E Tests
+include("tests:e2e")
 
 // Microservices
 include("services:circleguard-auth-service")
