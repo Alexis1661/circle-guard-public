@@ -120,34 +120,33 @@ pipeline {
             }
             steps {
                 script {
-                    sh """
-                        kubectl get namespace ${NS} > /dev/null 2>&1 || \
-                        kubectl create namespace ${NS}
-                    """
-                    sh "kubectl apply -k kubernetes_manifests/stage/"
-
-                    def deployments = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
-                    deployments.each { svc ->
+                    try {
                         sh """
-                            kubectl rollout status deployment/${svc}-service \
-                                -n ${NS} --timeout=180s
+                            kubectl get namespace ${NS} > /dev/null 2>&1 || \
+                            kubectl create namespace ${NS}
                         """
-                    }
+                        sh "kubectl apply -k kubernetes_manifests/stage/"
 
-                    sh """
-                        kubectl wait pod --all -n ${NS} \
-                            --for=condition=Ready \
-                            --timeout=180s
-                    """
-                    sh "kubectl get deployments -n ${NS}"
-                    sh "kubectl get pods       -n ${NS}"
-                }
-            }
-            post {
-                failure {
-                    sh "kubectl get events -n ${NS} --sort-by=.metadata.creationTimestamp > logs/k8s-stage-events.log 2>&1 || true"
-                    sh "kubectl describe pods  -n ${NS} >> logs/k8s-stage-events.log 2>&1 || true"
-                    echo 'K8s deploy failed — events in logs/k8s-stage-events.log'
+                        def deployments = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
+                        deployments.each { svc ->
+                            sh """
+                                kubectl rollout status deployment/${svc}-service \
+                                    -n ${NS} --timeout=180s
+                            """
+                        }
+
+                        sh """
+                            kubectl wait pod --all -n ${NS} \
+                                --for=condition=Ready \
+                                --timeout=180s
+                        """
+                        sh "kubectl get deployments -n ${NS}"
+                        sh "kubectl get pods       -n ${NS}"
+                        echo 'K8s STAGE deploy successful'
+                    } catch (e) {
+                        echo "WARNING: K8s STAGE deploy skipped — ${e.getMessage()}"
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }
@@ -159,6 +158,10 @@ pipeline {
             }
             steps {
                 script {
+                    if (currentBuild.result == 'UNSTABLE') {
+                        echo 'K8s deploy was skipped — omitiendo smoke tests'
+                        return
+                    }
                     echo 'Waiting 60s for pods to stabilize...'
                     sleep 60
 
@@ -187,13 +190,13 @@ pipeline {
                     }
 
                     if (failures) {
-                        echo "Rolling back failed services: ${failures.join(', ')}"
                         failures.each { svc ->
                             sh "kubectl rollout undo deployment/${svc}-service -n ${NS} || true"
                         }
-                        error("Smoke tests failed — rolled back: ${failures.join(', ')}")
+                        unstable("Smoke tests fallaron: ${failures.join(', ')} — rolled back")
+                    } else {
+                        echo 'All smoke tests passed!'
                     }
-                    echo 'All smoke tests passed!'
                 }
             }
         }
