@@ -41,7 +41,15 @@ pipeline {
             }
         }
 
-        // ── 2. BUILD IMAGES ───────────────────────────────────────────────────
+        // ── 2. COMPILE ALL SERVICES ─────────────────────────────────────────────
+        stage('Compile All Services') {
+            steps {
+                sh 'tr -d "\\r" < gradlew > gradlew.tmp && mv gradlew.tmp gradlew && chmod +x gradlew'
+                sh './gradlew bootJar --no-daemon -x test'
+            }
+        }
+
+        // ── 3. BUILD IMAGES ──────────────────────────────────────────────────────
         stage('Build Images') {
             steps {
                 script {
@@ -62,12 +70,10 @@ pipeline {
                                     -f services/${d}/Dockerfile \
                                     -t ${IMAGE_PREFIX}-${s}-service:latest \
                                     -t ${IMAGE_PREFIX}-${s}-service:${BUILD_TAG} \
-                                    --network host \
                                     .
                             """
                         }
                     }
-                    sh 'tr -d "\\r" < gradlew > gradlew.tmp && mv gradlew.tmp gradlew && chmod +x gradlew'
                     parallel builds
                 }
             }
