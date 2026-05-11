@@ -75,7 +75,7 @@ services:
     container_name: circleguard-kafka-test
     depends_on:
       zookeeper-test:
-#        condition: service_healthy
+        condition: service_started
     ports:
       - "9093:9093"
     environment:
@@ -156,9 +156,9 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       postgres-test:
-#        condition: service_healthy
+        condition: service_started
       openldap-test:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8180/actuator/health || exit 1"]
       interval: 30s
@@ -185,7 +185,7 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       postgres-test:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8083/actuator/health || exit 1"]
       interval: 30s
@@ -218,13 +218,13 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       postgres-test:
-#        condition: service_healthy
+        condition: service_started
       neo4j-test:
-#        condition: service_healthy
+        condition: service_started
       kafka-test:
-#        condition: service_healthy
+        condition: service_started
       redis-test:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8088/actuator/health || exit 1"]
       interval: 30s
@@ -250,9 +250,7 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       kafka-test:
-#        condition: service_healthy
-#      auth-service:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health || exit 1"]
       interval: 30s
@@ -279,9 +277,9 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       postgres-test:
-#        condition: service_healthy
+        condition: service_started
       kafka-test:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8086/actuator/health || exit 1"]
       interval: 30s
@@ -308,7 +306,7 @@ services:
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
     depends_on:
       redis-test:
-#        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8087/actuator/health || exit 1"]
       interval: 30s
