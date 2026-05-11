@@ -60,11 +60,11 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok"
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "*"
     healthcheck:
-      test: ["CMD", "zkServer.sh", "status"]
+      test: ["CMD", "bash", "-c", "echo 'ruok' > /dev/tcp/127.0.0.1/2181"]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 6
       start_period: 30s
     networks:
