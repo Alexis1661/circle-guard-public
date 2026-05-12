@@ -241,57 +241,58 @@ pipeline {
                         }
                     }
 
-                    def today     = sh(script: 'date +%Y-%m-%d', returnStdout: true).trim()
-                    def totalUnit = sh(script: "find . -path '*/build/test-results/test/*.xml' | wc -l", returnStdout: true).trim()
+                    def today = sh(script: 'date +%Y-%m-%d', returnStdout: true).trim()
 
-                    def notes = new StringBuilder()
-                    notes << "## ${env.RELEASE_VERSION} — Released ${today}\n\n"
+                    // Build notes as plain String (StringBuilder << is blocked by Script Security)
+                    def noteLines = []
+                    noteLines.add("## ${env.RELEASE_VERSION} -- Released ${today}\n")
 
                     if (breaking) {
-                        notes << "### ⚠️ Breaking Changes\n"
-                        breaking.each { notes << it << "\n" }
-                        notes << "\n### Migration Guide\n"
-                        notes << "1. Review breaking changes above before upgrading.\n"
-                        notes << "2. Update environment variables as indicated.\n"
-                        notes << "3. Run `./gradlew flywayMigrate` if DB schema changed.\n\n"
+                        noteLines.add("### Breaking Changes\n")
+                        breaking.each { noteLines.add(it + "\n") }
+                        noteLines.add("\n### Migration Guide\n")
+                        noteLines.add("1. Review breaking changes above before upgrading.\n")
+                        noteLines.add("2. Update environment variables as indicated.\n\n")
                     }
 
-                    notes << "### ✨ Features\n"
-                    if (features) { features.each { notes << it << "\n" } }
-                    else          { notes << "- No new features in this release\n" }
-                    notes << "\n"
+                    noteLines.add("### Features\n")
+                    if (features) { features.each { noteLines.add(it + "\n") } }
+                    else          { noteLines.add("- No new features in this release\n") }
+                    noteLines.add("\n")
 
-                    notes << "### 🐛 Bugfixes\n"
-                    if (bugfixes) { bugfixes.each { notes << it << "\n" } }
-                    else          { notes << "- No bugfixes in this release\n" }
-                    notes << "\n"
+                    noteLines.add("### Bugfixes\n")
+                    if (bugfixes) { bugfixes.each { noteLines.add(it + "\n") } }
+                    else          { noteLines.add("- No bugfixes in this release\n") }
+                    noteLines.add("\n")
 
                     if (others) {
-                        notes << "### 🔧 Other Changes\n"
-                        others.each { notes << it << "\n" }
-                        notes << "\n"
+                        noteLines.add("### Other Changes\n")
+                        others.each { noteLines.add(it + "\n") }
+                        noteLines.add("\n")
                     }
 
-                    notes << "### 🚀 Deployment\n"
-                    notes << "- **Services**: auth · identity · promotion · notification · form · gateway\n"
-                    notes << "- **Image tag**: ${env.RELEASE_VERSION} / ${env.GIT_SHORT}\n"
-                    notes << "- **Replicas**: 3 per service (HA)\n"
-                    notes << "- **Namespace**: ${NS}\n"
-                    notes << "- **DB migrations**: Applied automatically via Flyway\n\n"
+                    noteLines.add("### Deployment\n")
+                    noteLines.add("- Services: auth, identity, promotion, notification, form, gateway\n")
+                    noteLines.add("- Image tag: ${env.RELEASE_VERSION} / ${env.GIT_SHORT}\n")
+                    noteLines.add("- Replicas: 3 per service (HA)\n")
+                    noteLines.add("- Namespace: ${NS}\n")
+                    noteLines.add("- DB migrations: Applied automatically via Flyway\n\n")
 
-                    notes << "### 📊 Quality Metrics\n"
-                    notes << "- Unit tests    : 99 passing\n"
-                    notes << "- Integration   : 29 passing\n"
-                    notes << "- E2E tests     : 48 passing\n"
-                    notes << "- Security scan : 0 critical vulnerabilities\n\n"
+                    noteLines.add("### Quality Metrics\n")
+                    noteLines.add("- Unit tests    : 99 passing\n")
+                    noteLines.add("- Integration   : 29 passing\n")
+                    noteLines.add("- E2E tests     : 48 passing\n")
+                    noteLines.add("- Security scan : 0 critical vulnerabilities\n\n")
 
-                    notes << "### 👥 Contributors\n"
-                    if (contribs) { contribs.each { notes << it << "\n" } }
-                    else          { notes << "- No commits since last release\n" }
+                    noteLines.add("### Contributors\n")
+                    if (contribs) { contribs.each { noteLines.add(it + "\n") } }
+                    else          { noteLines.add("- No commits since last release\n") }
+
+                    def notes = noteLines.join('')
 
                     writeFile file: 'artifacts/RELEASE_NOTES.md', text: notes.toString()
                     echo "Release notes written to artifacts/RELEASE_NOTES.md"
-                    echo notes.toString()
+                    echo notes
                 }
             }
         }
@@ -531,16 +532,7 @@ pipeline {
                         ACTION REQUIRED — check Kubernetes events and pod logs immediately.
                     """.stripIndent()
                 )
-                // Slack notification (no-op if plugin not installed)
-                try {
-                    slackSend(
-                        channel: "${SLACK_CHANNEL}",
-                        color: 'danger',
-                        message: ":red_circle: *[PROD] DEPLOY FAILED* — Circle Guard ${version} | <${BUILD_URL}|Build #${BUILD_NUMBER}>"
-                    )
-                } catch (e) {
-                    echo "Slack not configured: ${e.getMessage()}"
-                }
+                echo "Slack plugin not installed — skipping Slack notification"
             }
         }
 
@@ -549,12 +541,12 @@ pipeline {
                 def version = env.RELEASE_VERSION ?: 'unknown'
                 emailext(
                     to: "${NOTIFY_EMAIL}",
-                    subject: "[PROD] ✅ Deployed Circle Guard ${version} successfully — Build #${BUILD_NUMBER}",
+                    subject: "[PROD] Deployed Circle Guard ${version} successfully — Build #${BUILD_NUMBER}",
                     body: """
                         PRODUCTION deployment SUCCESSFUL.
 
                         Version  : ${version}
-                        Commit   : ${env.GIT_SHORT ?: 'n/a'} — ${env.GIT_MESSAGE ?: 'n/a'}
+                        Commit   : ${env.GIT_SHORT ?: 'n/a'} -- ${env.GIT_MESSAGE ?: 'n/a'}
                         Author   : ${env.GIT_AUTHOR ?: 'n/a'}
                         Duration : ${currentBuild.durationString}
 
@@ -563,15 +555,7 @@ pipeline {
                         Manifest      : ${BUILD_URL}artifact/artifacts/deploy-manifest.txt
                     """.stripIndent()
                 )
-                try {
-                    slackSend(
-                        channel: "${SLACK_CHANNEL}",
-                        color: 'good',
-                        message: ":white_check_mark: *[PROD] ${version} deployed* — Circle Guard | <${BUILD_URL}artifact/artifacts/RELEASE_NOTES.md|Release Notes> | <${BUILD_URL}|Build #${BUILD_NUMBER}>"
-                    )
-                } catch (e) {
-                    echo "Slack not configured: ${e.getMessage()}"
-                }
+                echo "Slack plugin not installed — skipping Slack notification"
             }
         }
     }
