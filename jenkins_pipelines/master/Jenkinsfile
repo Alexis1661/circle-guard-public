@@ -514,48 +514,34 @@ pipeline {
         failure {
             script {
                 def version = env.RELEASE_VERSION ?: 'unknown'
-                emailext(
-                    to: "${NOTIFY_EMAIL}",
-                    subject: "[PROD] 🔴 DEPLOYMENT FAILED — Circle Guard ${version} — Build #${BUILD_NUMBER}",
-                    body: """
-                        PRODUCTION deployment FAILED.
-
-                        Version  : ${version}
-                        Commit   : ${env.GIT_SHORT ?: 'n/a'} — ${env.GIT_MESSAGE ?: 'n/a'}
-                        Stage    : ${currentBuild.currentResult}
-                        Duration : ${currentBuild.durationString}
-
-                        Console  : ${BUILD_URL}console
-                        Artifacts: ${BUILD_URL}artifact/artifacts/
-                        Logs     : ${BUILD_URL}artifact/logs/
-
-                        ACTION REQUIRED — check Kubernetes events and pod logs immediately.
-                    """.stripIndent()
-                )
-                echo "Slack plugin not installed — skipping Slack notification"
+                try {
+                    emailext(
+                        to: "${NOTIFY_EMAIL}",
+                        subject: "[PROD] DEPLOYMENT FAILED -- Circle Guard ${version} -- Build #${BUILD_NUMBER}",
+                        body: "PRODUCTION deployment FAILED. Version: ${version}. Console: ${BUILD_URL}console"
+                    )
+                } catch (e) { echo "Email not configured: ${e.getMessage()}" }
+                echo "[PROD] FAILURE notification sent (or skipped if email not configured)"
             }
         }
 
         success {
             script {
                 def version = env.RELEASE_VERSION ?: 'unknown'
-                emailext(
-                    to: "${NOTIFY_EMAIL}",
-                    subject: "[PROD] Deployed Circle Guard ${version} successfully — Build #${BUILD_NUMBER}",
-                    body: """
-                        PRODUCTION deployment SUCCESSFUL.
+                try {
+                    emailext(
+                        to: "${NOTIFY_EMAIL}",
+                        subject: "[PROD] Deployed Circle Guard ${version} successfully -- Build #${BUILD_NUMBER}",
+                        body: "PRODUCTION deployment SUCCESSFUL. Version: ${version}. Release Notes: ${BUILD_URL}artifact/artifacts/RELEASE_NOTES.md"
+                    )
+                } catch (e) { echo "Email not configured: ${e.getMessage()}" }
+                echo "[PROD] SUCCESS notification sent (or skipped if email not configured)"
+            }
+        }
 
-                        Version  : ${version}
-                        Commit   : ${env.GIT_SHORT ?: 'n/a'} -- ${env.GIT_MESSAGE ?: 'n/a'}
-                        Author   : ${env.GIT_AUTHOR ?: 'n/a'}
-                        Duration : ${currentBuild.durationString}
-
-                        Release Notes : ${BUILD_URL}artifact/artifacts/RELEASE_NOTES.md
-                        E2E Report    : ${BUILD_URL}E2E_20Report_20_28Production_29/
-                        Manifest      : ${BUILD_URL}artifact/artifacts/deploy-manifest.txt
-                    """.stripIndent()
-                )
-                echo "Slack plugin not installed — skipping Slack notification"
+        unstable {
+            script {
+                echo "[PROD] Build UNSTABLE (K8s deploy skipped or tests had warnings) — version: ${env.RELEASE_VERSION ?: 'unknown'}"
             }
         }
     }
