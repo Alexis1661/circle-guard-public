@@ -121,6 +121,11 @@ pipeline {
             steps {
                 script {
                     try {
+                        // Cargar imágenes al daemon Docker de minikube (host docker → minikube docker)
+                        // Necesario porque minikube tiene su propio daemon separado del host
+                        ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway'].each { svc ->
+                            sh "docker save ${IMAGE_PREFIX}-${svc}-service:latest | docker exec -i minikube docker load"
+                        }
                         sh "kubectl apply -k kubernetes_manifests/dev/"
                         sh "kubectl rollout status deployment/circle-guard-gateway -n ${NS} --timeout=120s"
                         echo 'K8s deploy successful'
