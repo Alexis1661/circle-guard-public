@@ -385,7 +385,7 @@ pipeline {
 
                         def deployments = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
                         deployments.each { svc ->
-                            sh "kubectl rollout status deployment/${svc}-service -n ${NS} --timeout=120s"
+                            sh "kubectl rollout status deployment/circle-guard-${svc} -n ${NS} --timeout=120s"
                         }
 
                         sh "kubectl wait pod --all -n ${NS} --for=condition=Ready --timeout=120s"
@@ -441,7 +441,7 @@ pipeline {
                     if (failures) {
                         echo "[PROD] Smoke failed for: ${failures.join(', ')} — rolling back ALL services"
                         ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway'].each { svc ->
-                            sh "kubectl rollout undo deployment/${svc}-service -n ${NS} || true"
+                            sh "kubectl rollout undo deployment/circle-guard-${svc} -n ${NS} || true"
                         }
                         // Critical email via emailext
                         emailext(

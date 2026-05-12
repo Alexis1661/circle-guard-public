@@ -122,7 +122,7 @@ pipeline {
                 script {
                     try {
                         sh "kubectl apply -k kubernetes_manifests/dev/"
-                        sh "kubectl rollout status deployment/gateway-service -n ${NS} --timeout=120s"
+                        sh "kubectl rollout status deployment/circle-guard-gateway -n ${NS} --timeout=120s"
                         echo 'K8s deploy successful'
                     } catch (e) {
                         echo "WARNING: K8s deploy skipped — ${e.getMessage()}"

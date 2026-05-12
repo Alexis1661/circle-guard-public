@@ -130,7 +130,7 @@ pipeline {
                         def deployments = ['auth', 'identity', 'promotion', 'notification', 'form', 'gateway']
                         deployments.each { svc ->
                             sh """
-                                kubectl rollout status deployment/${svc}-service \
+                                kubectl rollout status deployment/circle-guard-${svc} \
                                     -n ${NS} --timeout=180s
                             """
                         }
@@ -191,7 +191,7 @@ pipeline {
 
                     if (failures) {
                         failures.each { svc ->
-                            sh "kubectl rollout undo deployment/${svc}-service -n ${NS} || true"
+                            sh "kubectl rollout undo deployment/circle-guard-${svc} -n ${NS} || true"
                         }
                         unstable("Smoke tests fallaron: ${failures.join(', ')} — rolled back")
                     } else {
@@ -439,7 +439,7 @@ pipeline {
             // Full rollback on pipeline failure
             sh '''
                 for svc in auth identity promotion notification form gateway; do
-                    kubectl rollout undo deployment/${svc}-service -n circle-guard-stage 2>/dev/null || true
+                    kubectl rollout undo deployment/circle-guard-${svc} -n circle-guard-stage 2>/dev/null || true
                 done
             '''
             emailext(
