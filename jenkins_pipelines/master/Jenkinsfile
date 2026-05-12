@@ -307,8 +307,8 @@ pipeline {
                         'gateway'     : 'circleguard-gateway-service'
                     ]
                     def builds = [:]
-                    serviceMap.each { short, dir ->
-                        def s = short; def d = dir
+                    serviceMap.each { svc, dir ->
+                        def s = svc; def d = dir
                         builds["Build ${s}"] = {
                             sh """
                                 docker build \
