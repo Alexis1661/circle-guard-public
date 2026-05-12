@@ -143,7 +143,7 @@ pipeline {
             }
             post {
                 always {
-                    junit(testResults: '**/build/test-results/test/*.xml', allowEmptyResults: true)
+                    junit(testResults: '**/build/test-results/test/*.xml', allowEmptyResults: true, skipPublishingChecks: true)
                 }
             }
         }
@@ -169,7 +169,7 @@ pipeline {
                     post {
                         always {
                             sh "docker-compose -f docker-compose.test.yml down --remove-orphans || true"
-                            junit(testResults: 'tests/integration/build/test-results/**/*.xml', allowEmptyResults: true)
+                            junit(testResults: 'tests/integration/build/test-results/**/*.xml', allowEmptyResults: true, skipPublishingChecks: true)
                         }
                     }
                 }
@@ -180,7 +180,7 @@ pipeline {
                     }
                     post {
                         always {
-                            junit(testResults: 'tests/e2e/build/test-results/**/*.xml', allowEmptyResults: true)
+                            junit(testResults: 'tests/e2e/build/test-results/**/*.xml', allowEmptyResults: true, skipPublishingChecks: true)
                             publishHTML(target: [
                                 allowMissing: true, alwaysLinkToLastBuild: true, keepAll: true,
                                 reportDir: 'tests/e2e/build/reports/tests/test',

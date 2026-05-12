@@ -231,7 +231,7 @@ pipeline {
             post {
                 always {
                     sh 'for f in /tmp/pf-*.pid; do kill "$(cat $f)" 2>/dev/null || true; done'
-                    junit(testResults: 'tests/integration/build/test-results/**/*.xml', allowEmptyResults: true)
+                    junit(testResults: 'tests/integration/build/test-results/**/*.xml', allowEmptyResults: true, skipPublishingChecks: true)
                 }
             }
         }
@@ -266,7 +266,7 @@ pipeline {
             post {
                 always {
                     sh 'for f in /tmp/pf2-*.pid; do kill "$(cat $f)" 2>/dev/null || true; done'
-                    junit(testResults: 'tests/e2e/build/test-results/**/*.xml', allowEmptyResults: true)
+                    junit(testResults: 'tests/e2e/build/test-results/**/*.xml', allowEmptyResults: true, skipPublishingChecks: true)
                     publishHTML(target: [
                         allowMissing: true, alwaysLinkToLastBuild: true, keepAll: true,
                         reportDir: 'tests/e2e/build/reports/tests/test',
