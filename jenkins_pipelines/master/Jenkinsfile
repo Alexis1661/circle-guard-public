@@ -272,9 +272,9 @@ pipeline {
 
                     notes << "### 🚀 Deployment\n"
                     notes << "- **Services**: auth · identity · promotion · notification · form · gateway\n"
-                    notes << "- **Image tag**: \`${env.RELEASE_VERSION}\` / \`${env.GIT_SHORT}\`\n"
+                    notes << "- **Image tag**: ${env.RELEASE_VERSION} / ${env.GIT_SHORT}\n"
                     notes << "- **Replicas**: 3 per service (HA)\n"
-                    notes << "- **Namespace**: \`${NS}\`\n"
+                    notes << "- **Namespace**: ${NS}\n"
                     notes << "- **DB migrations**: Applied automatically via Flyway\n\n"
 
                     notes << "### 📊 Quality Metrics\n"
