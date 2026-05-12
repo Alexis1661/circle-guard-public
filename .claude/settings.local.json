@@ -100,7 +100,30 @@
       "Bash(# Guardar kubeconfig con certs embebidos en archivo temporal *)",
       "Bash(echo \"Build #49 corriendo, PID=$!\")",
       "Bash(echo \"Build #50 corriendo, PID=$!\")",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(echo \"DEV build corriendo PID=$!\")",
+      "Bash(minikube status *)",
+      "Bash(echo \"DEV #52 corriendo PID=$!\")",
+      "Bash(echo \"DEV #53 corriendo PID=$!\")",
+      "Bash(grep -E \"Finished:|tests completed|initializationError|Integration tests failed|WARNING.*K8s|Successfully built.*\\\\b[0-9a-f]{7,}\\\\b\" /tmp/dev_build.txt)",
+      "Bash(echo \"DEV #54 corriendo PID=$!\")",
+      "Bash(echo \"STAGE #1 corriendo PID=$!\")",
+      "Bash(grep -n \"\\\\\\\\\\\\\\\\'\" /c/Users/alexd/Universidad/OctavoSemestre/Ingesoft/circle-guard-public/jenkins_pipelines/master/Jenkinsfile)",
+      "Bash(echo \"MASTER #3 corriendo PID=$!\")",
+      "Bash(echo \"MASTER #4 corriendo PID=$!\")",
+      "Bash(echo \"MASTER #5 corriendo PID=$!\")",
+      "Bash(echo \"MASTER #6 corriendo PID=$!\")",
+      "Bash(echo \"MASTER #7 corriendo PID=$!\")",
+      "Bash(minikube profile *)",
+      "Bash(minikube start *)",
+      "Bash(echo \"DEV #55 PID=$!\")",
+      "Bash(echo \"DEV #56 PID=$!\")",
+      "Bash(echo \"STAGE PID=$!\")",
+      "Bash(npm list *)",
+      "Bash(npm install *)",
+      "Bash(node gen_informe.js)",
+      "Bash(python \"C:\\\\Users\\\\alexd\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\aa4eaaa3-fb42-431c-9d42-841f0dc808d2\\\\5429a277-df2c-4b6a-affe-25191ddef856\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" informe_taller_2.docx informe_unpacked)",
+      "Bash(python \"C:\\\\Users\\\\alexd\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\aa4eaaa3-fb42-431c-9d42-841f0dc808d2\\\\5429a277-df2c-4b6a-affe-25191ddef856\\\\skills\\\\docx\\\\scripts\\\\office\\\\pack.py\" informe_unpacked informe_taller_2.docx --validate false)"
     ]
   }
 }
